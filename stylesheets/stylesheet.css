@@ -28,6 +28,7 @@ footer, header, hgroup, menu, nav, section {
 	display: block;
 }
 body {
+	background-image: url("../images/tile.png");
 	line-height: 1;
 }
 ol, ul {
