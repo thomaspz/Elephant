@@ -57,9 +57,10 @@
 <li><p>No feature bloat or redesigns.</p></li>
 <li><p>Open source, <a href="https://github.com/jusu/Elephant">GitHub'd</a>.</p></li>
 </ul>
-<br><br>
 latest changes:
-<pre id="log"><span class="inner-pre" style="font-size: 9px"></span></pre>
+<span class="inner-pre" style="font-size: 9px">
+<div id="log"></div>
+</span>
 <br><br>
 <center><img src="images/plainfiles.jpg">
   <br><small>Notes and notebooks are ordinary files and folders.</small>
@@ -67,7 +68,7 @@ latest changes:
 
 <script>
   function log(msg) {
-    document.getElementById('log').textContent += msg + '\n';
+    document.getElementById('log').innerHTML += msg + '<br>';
   }
 
   var ws = new WebSocket('ws://elephant.mine.nu:8080/');
