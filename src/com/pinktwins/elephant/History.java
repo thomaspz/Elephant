@@ -16,6 +16,8 @@ public class History {
 	private boolean preventAdd = false;
 	private boolean freezeState;
 
+	private int indexMark = 0;
+
 	private ElephantWindow window;
 
 	public History(ElephantWindow w) {
@@ -96,18 +98,18 @@ public class History {
 	public void back() {
 		if (index > 0) {
 			index--;
-			showIndex();
+			showIndex(true);
 		}
 	}
 
 	public void forward() {
 		if (index < items.size() - 1) {
 			index++;
-			showIndex();
+			showIndex(true);
 		}
 	}
 
-	private void showIndex() {
+	private void showIndex(final boolean shouldClearSearch) {
 		HistoryItem i = items.get(index);
 
 		preventAdd = true;
@@ -119,7 +121,7 @@ public class History {
 			window.showAllNotes();
 			break;
 		case Note:
-			window.selectAndShowNote(i.note.findContainingNotebook(), i.note);
+			window.selectAndShowNote(i.note.findContainingNotebook(), i.note, shouldClearSearch);
 			break;
 		case Notebooks:
 			window.showNotebooks();
@@ -138,6 +140,16 @@ public class History {
 		preventAdd = false;
 	}
 
+	public void rewindSearch() {
+		for (; index > 0; index--) {
+			HistoryItem i = items.get(index);
+			if (i.type != ItemType.Search) {
+				break;
+			}
+		}
+		showIndex(false);
+	}
+
 	public void freeze() {
 		freezeState = preventAdd;
 		preventAdd = true;
@@ -150,5 +162,19 @@ public class History {
 	public void clear() {
 		items.clear();
 		index = 0;
+	}
+
+	public int size() {
+		return items.size();
+	}
+
+	public void setMark() {
+		indexMark = index;
+	}
+
+	public void rewindToMark() {
+		index = indexMark;
+		rewindSearch();
+		//showIndex(false);
 	}
 }

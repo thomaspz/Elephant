@@ -11,12 +11,28 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import com.google.common.io.Files;
+import com.pinktwins.elephant.Elephant;
 
 public class IOUtil {
 
 	private static final Logger LOG = Logger.getLogger(IOUtil.class.getName());
 
 	private static final byte[] emptyBytes = new byte[0];
+
+	static public Charset getCharset() {
+		if (Elephant.settings.hasCharset()) {
+			String charsetName = Elephant.settings.getCharset();
+			if (Charset.isSupported(charsetName)) {
+				return Charset.forName(charsetName);
+			} else {
+				System.out.println("Warning: Charset '" + charsetName + "' defined but not supported by system.");
+				System.out.println("Defaulting to " + Charset.defaultCharset());
+				return Charset.defaultCharset();
+			}
+		} else {
+			return Charset.defaultCharset();
+		}
+	}
 
 	private IOUtil() {
 	}
@@ -61,7 +77,7 @@ public class IOUtil {
 	}
 
 	public static void writeFile(File file, String text) throws IOException {
-		Files.write(text, file, Charset.defaultCharset());
+		Files.write(text, file, IOUtil.getCharset());
 	}
 
 	public static JSONObject loadJson(File file) {

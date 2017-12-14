@@ -27,7 +27,17 @@ public class SaveChanges {
 	private static void renameAccordingToFormat(Note currentNote, CustomEditor editor, String title) {
 		if (!currentNote.isHtml()) {
 			try {
-				currentNote.attemptSafeRename(title + (currentNote.isMarkdown() ? ".md" : editor.isRichText ? ".rtf" : ".txt"));
+				String newName = title;
+
+				String defaultFiletype = Elephant.settings.getDefaultFiletype();
+				if (!defaultFiletype.contains(".")) {
+					defaultFiletype = "." + defaultFiletype;
+				}
+
+				if (!newName.endsWith(".md") && !newName.endsWith(".txt")) {
+					newName = title + (currentNote.isMarkdown() ? ".md" : editor.isRichText ? ".rtf" : defaultFiletype);
+				}
+				currentNote.attemptSafeRename(newName);
 			} catch (IOException e) {
 				LOG.severe("Fail: " + e);
 			}
@@ -54,12 +64,19 @@ public class SaveChanges {
 				}
 
 				// Format
+				String ext = FilenameUtils.getExtension(currentNote.file().getAbsolutePath()).toLowerCase();
 				if (!changed) {
 					// Did format change during edit?
-					String ext = FilenameUtils.getExtension(currentNote.file().getAbsolutePath()).toLowerCase();
 					if ((editor.isRichText && "txt".equals(ext)) || (!editor.isRichText && "rtf".equals(ext))) {
 						renameAccordingToFormat(currentNote, editor, editedTitle);
 						changed = true;
+					}
+				}
+
+				// If we saved as markdown note, set editor to markdown mode.
+				if (changed) {
+					if ("md".equals(ext) && !editor.isMarkdown) {
+						editor.setMarkdown(true);
 					}
 				}
 

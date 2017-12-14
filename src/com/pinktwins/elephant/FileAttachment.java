@@ -41,6 +41,7 @@ import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.FilenameUtils;
 
 import com.pinktwins.elephant.NoteEditor.EditorController;
+import com.pinktwins.elephant.ui.RetinaImageIcon;
 import com.pinktwins.elephant.util.CustomMouseListener;
 import com.pinktwins.elephant.util.Factory;
 import com.pinktwins.elephant.util.Images;
@@ -429,7 +430,7 @@ public class FileAttachment extends JPanel {
 					}
 				}
 
-				ImageIcon ii = new ImageIcon(blank);
+				RetinaImageIcon ii = new RetinaImageIcon(blank);
 				pageIcons.add(ii);
 
 				addPageBreak(tp, style);
@@ -442,9 +443,11 @@ public class FileAttachment extends JPanel {
 			}
 
 			final Workers<Image> workers = new Workers<Image>();
+			int count = 0;
 
 			for (PreviewPageProvider ppp : pages) {
 				final PreviewPageProvider page = ppp;
+				final int num = count++;
 
 				workers.add(new SwingWorker<Image, Void>() {
 					@Override
@@ -457,7 +460,7 @@ public class FileAttachment extends JPanel {
 						try {
 							Image img = get();
 							if (img != null) {
-								int num = pages.size() - workers.size();
+								//int num = pages.size() - workers.size();
 
 								if (num >= 0 && num < pageIcons.size()) {
 									pageIcons.get(num).setImage(img);
@@ -473,9 +476,9 @@ public class FileAttachment extends JPanel {
 
 							// abort if editor has changed note
 							if (noteHash == editor.noteHash()) {
-								workers.next();
+								workers.done();
 							} else {
-								workers.last();
+								workers.finish();
 							}
 						} catch (ExecutionException e) {
 							LOG.severe("Fail: " + e);
@@ -489,7 +492,7 @@ public class FileAttachment extends JPanel {
 
 			if (!workers.isEmpty()) {
 				// One more worker to mark done + cleanup
-				workers.add(new SwingWorker<Image, Void>() {
+				workers.addFinalizer(new SwingWorker<Image, Void>() {
 					@Override
 					protected Image doInBackground() throws Exception {
 						return null;
@@ -506,7 +509,10 @@ public class FileAttachment extends JPanel {
 				});
 
 				loadingStartTs = System.currentTimeMillis();
-				workers.next();
+				int cores = Runtime.getRuntime().availableProcessors();
+				for (int n = 0; n < cores; n++) {
+					workers.next();
+				}
 			}
 
 			add(tp, BorderLayout.CENTER);

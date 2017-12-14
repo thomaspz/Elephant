@@ -54,6 +54,7 @@ import com.pinktwins.elephant.util.CustomMouseListener;
 import com.pinktwins.elephant.util.Images;
 import com.pinktwins.elephant.util.LaunchUtil;
 import com.pinktwins.elephant.util.ResizeListener;
+import com.pinktwins.elephant.util.ScreenUtil;
 import com.pinktwins.elephant.util.SimpleImageInfo;
 
 public class NoteEditor extends BackgroundPanel implements EditorEventListener {
@@ -75,8 +76,8 @@ public class NoteEditor extends BackgroundPanel implements EditorEventListener {
 
 	public static final ImageScalingCache scalingCache = new ImageScalingCache();
 
-	public static final PegDownProcessor pegDown = new PegDownProcessor(org.pegdown.Parser.AUTOLINKS | org.pegdown.Parser.TABLES
-			| org.pegdown.Parser.FENCED_CODE_BLOCKS | org.pegdown.Parser.DEFINITIONS);
+	public static final PegDownProcessor pegDown = new PegDownProcessor(
+			org.pegdown.Parser.AUTOLINKS | org.pegdown.Parser.TABLES | org.pegdown.Parser.FENCED_CODE_BLOCKS | org.pegdown.Parser.DEFINITIONS);
 
 	static {
 		Iterator<Image> i = Images.iterator(new String[] { "noteeditor", "noteTopShadow", "noteToolsNotebook", "noteToolsTrash", "noteToolsDivider" });
@@ -435,7 +436,12 @@ public class NoteEditor extends BackgroundPanel implements EditorEventListener {
 	}
 
 	private long getUsableEditorWidth() {
-		return getWidth() - kBorder * 4 - 12;
+		if (!ScreenUtil.isRetina()) {
+			return getWidth() - kBorder * 4 - 12;
+		}
+
+		// Retina
+		return getWidth() * 2 - 147; // XXX: magic number: 147
 	}
 
 	private Image getScaledImageCacheOnly(File sourceFile, int widthOffset, boolean useFullWidth) {
@@ -449,11 +455,31 @@ public class NoteEditor extends BackgroundPanel implements EditorEventListener {
 
 		long w = getUsableEditorWidth() + widthOffset;
 		long iw = info.getWidth();
+		long ih = info.getHeight();
+
+		if (ScreenUtil.isRetina() && !useFullWidth && iw < w) {
+			// Retina screen, requested NOT full editor width scaling,
+			// image is smaller than editor width. Need to scale using
+			// 2x image size, otherwise image would show up half as small.
+			iw *= 2;
+			ih *= 2;
+
+			float f;
+			if (iw < w) {
+				f = 1;
+			} else {
+				f = w / (float) iw;
+			}
+			int scaledWidth = (int) (f * (float) iw);
+			int scaledHeight = (int) (f * (float) ih);
+
+			return scalingCache.get(sourceFile, scaledWidth, scaledHeight);
+		}
 
 		if (useFullWidth || iw > w) {
 			float f = w / (float) iw;
 			int scaledWidth = (int) (f * (float) iw);
-			int scaledHeight = (int) (f * (float) info.getHeight());
+			int scaledHeight = (int) (f * (float) ih);
 
 			return scalingCache.get(sourceFile, scaledWidth, scaledHeight);
 		}
@@ -464,11 +490,40 @@ public class NoteEditor extends BackgroundPanel implements EditorEventListener {
 	private Image getScaledImage(Image i, File sourceFile, int widthOffset, boolean useFullWidth) {
 		long w = getUsableEditorWidth() + widthOffset;
 		long iw = i.getWidth(null);
+		long ih = i.getHeight(null);
+
+		if (ScreenUtil.isRetina() && !useFullWidth && iw < w) {
+			// Retina screen, requested NOT full editor width scaling,
+			// image is smaller than editor width. Need to scale using
+			// 2x image size, otherwise image would show up half as small.
+			iw *= 2;
+			ih *= 2;
+
+			float f;
+			if (iw < w) {
+				f = 1;
+			} else {
+				f = w / (float) iw;
+			}
+			int scaledWidth = (int) (f * (float) iw);
+			int scaledHeight = (int) (f * (float) ih);
+
+			Image cached = scalingCache.get(sourceFile, scaledWidth, scaledHeight);
+			if (cached != null) {
+				return cached;
+			}
+
+			Image img = i.getScaledInstance(scaledWidth, scaledHeight, Image.SCALE_AREA_AVERAGING);
+			scalingCache.put(sourceFile, scaledWidth, scaledHeight, img);
+
+			return img;
+		}
 
 		if (useFullWidth || iw > w) {
+			// Scale to editor width
 			float f = w / (float) iw;
 			int scaledWidth = (int) (f * (float) iw);
-			int scaledHeight = (int) (f * (float) i.getHeight(null));
+			int scaledHeight = (int) (f * (float) ih);
 
 			Image cached = scalingCache.get(sourceFile, scaledWidth, scaledHeight);
 			if (cached != null) {
@@ -529,6 +584,10 @@ public class NoteEditor extends BackgroundPanel implements EditorEventListener {
 
 		if (window.isShowingSearchResults()) {
 			window.redoSearch();
+		}
+
+		if (window.isShowingAllNotes()) {
+			window.showAllNotes();
 		}
 
 		clear();
@@ -819,6 +878,15 @@ public class NoteEditor extends BackgroundPanel implements EditorEventListener {
 					} catch (BadLocationException e) {
 						LOG.severe("Fail: " + e);
 					}
+
+					// If note is unnamed, use file name
+					if (currentNote.getMeta().title().equals("Untitled")) {
+						editor.setTitle(f.getName());
+					}
+
+					// Update modify time
+					currentNote.file().setLastModified(System.currentTimeMillis());
+
 				} catch (IOException e) {
 					LOG.severe("Fail: " + e);
 				}
@@ -839,12 +907,24 @@ public class NoteEditor extends BackgroundPanel implements EditorEventListener {
 		editor.getTextPane().requestFocusInWindow();
 	}
 
+	public void encryptAction() {
+		editor.encryptSelection();
+	}
+
+	public void decryptAction() {
+		editor.decryptSelection();
+	}
+
 	public void undo() {
 		editor.undo();
 	}
 
 	public void redo() {
 		editor.redo();
+	}
+
+	public void updateUndoState() {
+		editor.updateUndoState();
 	}
 
 	private void turnToPlainText_format() {
@@ -857,15 +937,15 @@ public class NoteEditor extends BackgroundPanel implements EditorEventListener {
 	public void turnToPlainText() {
 		turnToPlainText_format();
 		/*
-		 * try { currentNote.attemptSafeRename(editor.getTitle() + ".txt"); editor.setMarkdown(false); } catch
-		 * (IOException e) { e.printStackTrace(); }
+		 * try { currentNote.attemptSafeRename(editor.getTitle() + ".txt"); editor.setMarkdown(false); } catch (IOException e) {
+		 * e.printStackTrace(); }
 		 */
 	}
 
 	/*
 	 * somehow I just dont like this. public void turnToMarkdown() { if (!currentNote.isMarkdown()) {
-	 * turnToPlainText_format(); try { currentNote.attemptSafeRename(editor.getTitle() + ".md");
-	 * editor.setMarkdown(true); } catch (IOException e) { e.printStackTrace(); } } }
+	 * turnToPlainText_format(); try { currentNote.attemptSafeRename(editor.getTitle() + ".md"); editor.setMarkdown(true); }
+	 * catch (IOException e) { e.printStackTrace(); } } }
 	 */
 
 	public void importAttachments(List<AttachmentInfo> info) {

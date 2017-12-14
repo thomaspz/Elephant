@@ -12,11 +12,11 @@ import java.util.Set;
 import java.util.logging.Logger;
 
 import javax.imageio.ImageIO;
-import javax.swing.ImageIcon;
 import javax.swing.JTextPane;
 
 import org.apache.commons.lang3.StringUtils;
 
+import com.pinktwins.elephant.ui.RetinaImageIcon;
 import com.pinktwins.elephant.util.Factory;
 import com.pinktwins.elephant.util.Images;
 
@@ -68,7 +68,7 @@ public class NoteAttachments {
 				}
 
 				if (i != null) {
-					ImageIcon ii = new ImageIcon(i);
+					RetinaImageIcon ii = new RetinaImageIcon(i);
 
 					if (position > notePane.getDocument().getLength()) {
 						position = 0;

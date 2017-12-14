@@ -2,7 +2,6 @@ package com.pinktwins.elephant.data;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
@@ -98,16 +97,12 @@ public class Note implements Comparable<Note> {
 		public String getPath(File noteFile) {
 			return attachmentFolderPath(noteFile);
 		}
-	},
-
-	new NoteBoundDirectory() {
+	}, new NoteBoundDirectory() {
 		@Override
 		public String getPath(File noteFile) {
 			return resourceFolderPath(noteFile);
 		}
-	},
-
-	new NoteBoundDirectory() {
+	}, new NoteBoundDirectory() {
 		@Override
 		public String getPath(File noteFile) {
 			return filesFolderPath(noteFile);
@@ -233,7 +228,7 @@ public class Note implements Comparable<Note> {
 
 	private String readFileAsString() {
 		byte[] contents = IOUtil.readFile(file);
-		return new String(contents, Charset.defaultCharset());
+		return new String(contents, IOUtil.getCharset());
 	}
 
 	public String contents() {
@@ -279,12 +274,13 @@ public class Note implements Comparable<Note> {
 	}
 
 	public Map<String, String> getMetaMap() {
+		String json = "";
 		try {
-			String json = new String(IOUtil.readFile(meta), Charset.defaultCharset());
+			json = new String(IOUtil.readFile(meta), IOUtil.getCharset());
 			if (json == null || json.isEmpty()) {
 				return Collections.emptyMap();
 			}
-
+			
 			JSONObject o = new JSONObject(json);
 			Map<String, String> map = Factory.newHashMap();
 
@@ -298,7 +294,7 @@ public class Note implements Comparable<Note> {
 
 			return map;
 		} catch (JSONException e) {
-			LOG.severe("Fail: " + e);
+			LOG.severe("Fail: " + e + " json: " + json + " file: " + file.getAbsolutePath());
 		}
 
 		return Collections.emptyMap();
@@ -306,7 +302,7 @@ public class Note implements Comparable<Note> {
 
 	private void setMeta(String key, String value) {
 		try {
-			String json = new String(IOUtil.readFile(meta), Charset.defaultCharset());
+			String json = new String(IOUtil.readFile(meta), IOUtil.getCharset());
 			if (json == null || json.isEmpty()) {
 				json = "{}";
 			}

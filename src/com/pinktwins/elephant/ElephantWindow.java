@@ -25,6 +25,8 @@ import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.Iterator;
+import java.util.Timer;
+import java.util.TimerTask;
 
 import javax.swing.BorderFactory;
 import javax.swing.JCheckBoxMenuItem;
@@ -36,6 +38,7 @@ import javax.swing.JOptionPane;
 import javax.swing.JSplitPane;
 import javax.swing.JTextPane;
 import javax.swing.KeyStroke;
+import javax.swing.UIManager;
 import javax.swing.border.Border;
 import javax.swing.text.BadLocationException;
 import javax.swing.text.DefaultHighlighter.DefaultHighlightPainter;
@@ -53,10 +56,12 @@ import com.pinktwins.elephant.data.Vault;
 import com.pinktwins.elephant.eventbus.NoteChangedEvent;
 import com.pinktwins.elephant.eventbus.ShortcutsChangedEvent;
 import com.pinktwins.elephant.eventbus.StyleCommandEvent;
+import com.pinktwins.elephant.eventbus.ToastEvent;
 import com.pinktwins.elephant.eventbus.UIEvent;
 import com.pinktwins.elephant.eventbus.UndoRedoStateUpdateRequest;
 import com.pinktwins.elephant.eventbus.VaultEvent;
 import com.pinktwins.elephant.util.Images;
+import com.pinktwins.elephant.util.ScreenUtil;
 
 public class ElephantWindow extends JFrame {
 
@@ -89,6 +94,8 @@ public class ElephantWindow extends JFrame {
 	private static final Color[] colorHighlights = { Color.YELLOW, Color.PINK, Color.CYAN, Color.ORANGE, Color.GREEN };
 	private static final DefaultHighlightPainter[] highlightPainters = new DefaultHighlightPainter[colorHighlights.length];
 
+	private static final String windowTitle = "Elephant";
+
 	public static final int bigWidth = 1920;
 
 	public static final Border emptyBorder = BorderFactory.createEmptyBorder(0, 0, 0, 0);
@@ -120,7 +127,7 @@ public class ElephantWindow extends JFrame {
 	private JMenuItem iUndo, iRedo, iSaveSearch, iSidebarVisibility;
 	private JCheckBoxMenuItem iCard, iSnippet, iRecentNotes;
 
-	private static final Image elephantIcon;
+	private static final Image elephantIcon_v2_64;
 
 	enum UiModes {
 		notebooks, notes, tags
@@ -131,8 +138,8 @@ public class ElephantWindow extends JFrame {
 	private String previousSearchText = "";
 
 	static {
-		Iterator<Image> i = Images.iterator(new String[] { "elephantIcon" });
-		elephantIcon = i.next();
+		Iterator<Image> i = Images.iterator(new String[] { "elephantIcon-v2-64" });
+		elephantIcon_v2_64 = i.next();
 
 		for (int n = 0; n < highlightPainters.length; n++) {
 			highlightPainters[n] = new DefaultHighlightPainter(colorHighlights[n % colorHighlights.length]);
@@ -175,9 +182,8 @@ public class ElephantWindow extends JFrame {
 	ActionListener closeWindowAction = new ActionListener() {
 		@Override
 		public void actionPerformed(ActionEvent e) {
-			saveChanges();
-			cleanup();
 			ElephantWindow.this.dispose();
+			performWindowCloseActions();
 		}
 	};
 
@@ -229,7 +235,7 @@ public class ElephantWindow extends JFrame {
 
 			// Mac packages the icon just fine. Windows needs this for taskbar icon. Linux?
 			if (SystemUtils.IS_OS_WINDOWS || SystemUtils.IS_OS_LINUX) {
-				startFrame.setIconImage(elephantIcon);
+				startFrame.setIconImage(elephantIcon_v2_64);
 			}
 
 			startFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
@@ -316,6 +322,20 @@ public class ElephantWindow extends JFrame {
 		@Override
 		public void actionPerformed(ActionEvent e) {
 			noteEditor.pasteAction();
+		}
+	};
+
+	ActionListener encryptAction = new ActionListener() {
+		@Override
+		public void actionPerformed(ActionEvent e) {
+			noteEditor.encryptAction();
+		}
+	};
+
+	ActionListener decryptAction = new ActionListener() {
+		@Override
+		public void actionPerformed(ActionEvent e) {
+			noteEditor.decryptAction();
 		}
 	};
 
@@ -410,6 +430,16 @@ public class ElephantWindow extends JFrame {
 		}
 	};
 
+	ActionListener countNotesAction = new ActionListener() {
+		@Override
+		public void actionPerformed(ActionEvent e) {
+			Vault v = Vault.getInstance();
+			int trashCount = v.findNotebook(v.getTrash()).count();
+			JOptionPane.showMessageDialog(null, (v.getNoteCount() - trashCount) + " notes (+ " + trashCount + " notes in Trash)", "Note count",
+					JOptionPane.PLAIN_MESSAGE);
+		}
+	};
+
 	ActionListener jumpToNotebookAction = new ActionListener() {
 		@Override
 		public void actionPerformed(ActionEvent e) {
@@ -472,7 +502,12 @@ public class ElephantWindow extends JFrame {
 	ActionListener undoAction = new ActionListener() {
 		@Override
 		public void actionPerformed(ActionEvent e) {
-			noteEditor.undo();
+			if (Elephant.undoManager.hasEvents() && !noteEditor.hasFocus()) {
+				Elephant.undoManager.performUndo();
+				noteList.updateLoad();
+			} else {
+				noteEditor.undo();
+			}
 		}
 	};
 
@@ -517,7 +552,7 @@ public class ElephantWindow extends JFrame {
 	};
 
 	public ElephantWindow() {
-		setTitle("Elephant Premium");
+		setTitle(windowTitle);
 
 		// Scale fonts using 'fontScale' setting
 		String fontScale = Elephant.settings.getString(Settings.Keys.FONT_SCALE);
@@ -530,7 +565,7 @@ public class ElephantWindow extends JFrame {
 
 		// Mac packages the icon just fine. Windows needs this for taskbar icon. Linux?
 		if (SystemUtils.IS_OS_WINDOWS || SystemUtils.IS_OS_LINUX) {
-			setIconImage(elephantIcon);
+			setIconImage(elephantIcon_v2_64);
 		}
 
 		setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
@@ -575,21 +610,7 @@ public class ElephantWindow extends JFrame {
 
 			@Override
 			public void windowClosed(WindowEvent e) {
-				saveChanges();
-
-				cleanup();
-
-				boolean alive = false;
-
-				for (Window w : getWindows()) {
-					if (w.isShowing()) {
-						alive = true;
-					}
-				}
-
-				if (!alive) {
-					System.exit(0);
-				}
+				performWindowCloseActions();
 			}
 		};
 
@@ -658,6 +679,25 @@ public class ElephantWindow extends JFrame {
 					}
 				}
 			}.start();
+		}
+
+		ScreenUtil.enableOSXFullscreen(this);
+	}
+
+	private void performWindowCloseActions() {
+		saveChanges();
+		cleanup();
+
+		boolean alive = false;
+
+		for (Window w : getWindows()) {
+			if (w.isShowing()) {
+				alive = true;
+			}
+		}
+
+		if (!alive) {
+			System.exit(0);
 		}
 	}
 
@@ -755,6 +795,16 @@ public class ElephantWindow extends JFrame {
 		Elephant.settings.setChain(Settings.Keys.WINDOW_MAXIMIZED, (s & JFrame.MAXIMIZED_BOTH) == JFrame.MAXIMIZED_BOTH ? true : false);
 	}
 
+	public void showToast(String text) {
+		setTitle(text);
+		new Timer().schedule(new TimerTask() {
+			@Override
+			public void run() {
+				ElephantWindow.this.setTitle(windowTitle);
+			}
+		}, 3000);
+	}
+
 	// Handling key dispatching for full control over keyboard interaction.
 	// XXX this will bite me eventually
 	private class KeyDispatcher implements KeyEventDispatcher {
@@ -813,6 +863,18 @@ public class ElephantWindow extends JFrame {
 						case KeyEvent.VK_BACK_SLASH:
 							if ((e.getModifiers() & menuMask) == menuMask) {
 								editTagsAction.actionPerformed(null);
+							}
+							break;
+						case KeyEvent.VK_UP:
+							if (toolBar.isEditing()) {
+								noteList.changeSelection(-1, e);
+								return true;
+							}
+							break;
+						case KeyEvent.VK_DOWN:
+							if (toolBar.isEditing()) {
+								noteList.changeSelection(1, e);
+								return true;
 							}
 							break;
 						}
@@ -941,7 +1003,7 @@ public class ElephantWindow extends JFrame {
 				if (notebook != null) {
 					Note note = notebook.find(f.getName());
 					if (note != null) {
-						selectAndShowNote(notebook, note);
+						selectAndShowNote(notebook, note, true);
 					}
 				}
 			}
@@ -952,18 +1014,25 @@ public class ElephantWindow extends JFrame {
 		}
 	}
 
-	public void selectAndShowNote(final Notebook nb, final Note n) {
+	public void selectAndShowNote(final Notebook nb, final Note n, final boolean shouldClearSearch) {
 		history.freeze();
 		showNotebook(nb);
 		noteList.selectNote(n, false);
 		history.unFreeze();
 
 		showNote(n);
-		toolBar.clearSearch();
+		if (shouldClearSearch) {
+			toolBar.clearSearch();
+		}
 	}
 
 	public void saveChanges() {
 		noteEditor.saveChanges();
+	}
+
+	public void clearNoteEditor() {
+		splitRight.setRightComponent(noteEditor);
+		noteEditor.clear();
 	}
 
 	public void deleteSelectedNote() {
@@ -1057,6 +1126,7 @@ public class ElephantWindow extends JFrame {
 
 	public void openNoteWindow(Note note) {
 		ElephantWindow w = newWindow();
+		w.setTitle(note.getMeta().title());
 		w.isNoteWindow = true;
 		w.toolBar.setVisible(false);
 		w.iSidebarVisibility.setText("Show Sidebar");
@@ -1090,13 +1160,15 @@ public class ElephantWindow extends JFrame {
 	}
 
 	public void newNote() {
-		if (noteList.isDynamicallyCreatedNotebook()) {
-			Notebook nb = Vault.getInstance().getDefaultNotebook();
-			showNotebook(nb);
-		}
+		synchronized (Search.lockObject) {
+			if (noteList.isDynamicallyCreatedNotebook()) {
+				Notebook nb = Vault.getInstance().getDefaultNotebook();
+				showNotebook(nb);
+			}
 
-		noteList.newNote();
-		focusEditor();
+			noteList.newNote();
+			focusEditor();
+		}
 	}
 
 	public void setSearchText(String text) {
@@ -1104,9 +1176,22 @@ public class ElephantWindow extends JFrame {
 	}
 
 	public void search(String text) {
+		if (previousSearchText.length() == 0 && text.length() > 0) {
+			history.setMark();
+		}
+
 		previousSearchText = text;
 		if (text.length() == 0) {
-			showNotebook(Vault.getInstance().getDefaultNotebook());
+			if (history.size() > 0) {
+				// When clearing out search, we could go to previous
+				// history item which is not a search:
+				// history.rewindSearch();
+
+				// Or to point in history where we started searching:
+				history.rewindToMark();
+			} else {
+				showNotebook(Vault.getInstance().getDefaultNotebook());
+			}
 			iSaveSearch.setEnabled(false);
 		} else {
 			history.freeze();
@@ -1127,6 +1212,10 @@ public class ElephantWindow extends JFrame {
 		return noteList.isSearch();
 	}
 
+	public boolean isShowingAllNotes() {
+		return noteList.currentNotebook().isAllNotes();
+	}
+
 	private JMenuItem menuItem(String title, int keyCode, int keyMask, ActionListener action) {
 		JMenuItem mi = new JMenuItem(title);
 		if (keyCode > 0 || keyMask > 0) {
@@ -1139,6 +1228,15 @@ public class ElephantWindow extends JFrame {
 	private void createMenu() {
 		menuBar = new JMenuBar();
 
+		// Windows uses bold font for menu by default.
+		// Plain might be preferred.
+		if (SystemUtils.IS_OS_WINDOWS) {
+			Font f = menuBar.getFont().deriveFont(Font.PLAIN);
+			UIManager.put("Menu.font", f);
+			UIManager.put("MenuItem.font", f);
+			UIManager.put("CheckBoxMenuItem.font", f);
+		}
+
 		JMenu file = new JMenu("File");
 		file.add(menuItem("New Note", KeyEvent.VK_N, menuMask, newNoteAction));
 		file.add(menuItem("New Notebook", KeyEvent.VK_N, menuMask | KeyEvent.SHIFT_DOWN_MASK, newNotebookAction));
@@ -1149,8 +1247,7 @@ public class ElephantWindow extends JFrame {
 		file.add(menuItem("Close", KeyEvent.VK_W, menuMask, closeWindowAction));
 		file.add(menuItem("Save", KeyEvent.VK_S, menuMask, saveNoteAction));
 		// file.addSeparator();
-		// file.add(menuItem("Settings", KeyEvent.VK_COMMA,
-		// ActionEvent.META_MASK, settingsAction));
+		// file.add(menuItem("Preferences…", KeyEvent.VK_COMMA, menuMask, settingsAction));
 
 		JMenu edit = new JMenu("Edit");
 
@@ -1169,6 +1266,12 @@ public class ElephantWindow extends JFrame {
 		edit.add(iCut);
 		edit.add(iCopy);
 		edit.add(iPaste);
+		edit.addSeparator();
+
+		final JMenuItem iEnc = menuItem("Encrypt Selection to Clipboard", KeyEvent.VK_C, menuMask | KeyEvent.SHIFT_DOWN_MASK, encryptAction);
+		final JMenuItem iDec = menuItem("Decrypt to Clipboard", KeyEvent.VK_X, menuMask | KeyEvent.SHIFT_DOWN_MASK, decryptAction);
+		edit.add(iEnc);
+		edit.add(iDec);
 
 		edit.addSeparator();
 		edit.add(menuItem("Search Notes...", KeyEvent.VK_F, menuMask | KeyEvent.ALT_DOWN_MASK, searchAction));
@@ -1240,6 +1343,7 @@ public class ElephantWindow extends JFrame {
 		note.add(menuItem("Add Notebook to Shortcuts", 0, 0, addNotebookToShortcutsAction));
 		note.addSeparator();
 		note.add(menuItem("Word Count...", 0, 0, countNotebookWordsAction));
+		note.add(menuItem("Note Count...", 0, 0, countNotesAction));
 
 		JMenu format = new JMenu("Format");
 		JMenu style = new JMenu("Style");
@@ -1280,6 +1384,10 @@ public class ElephantWindow extends JFrame {
 				iCut.setEnabled(hasSelection);
 				iCopy.setEnabled(hasSelection);
 				iPaste.setEnabled(true);
+				if (hasFocus) {
+					Elephant.undoManager.clear();
+					noteEditor.updateUndoState();
+				}
 			}
 		});
 	}
@@ -1354,6 +1462,10 @@ public class ElephantWindow extends JFrame {
 		if (event.contentChanged) {
 			sortAndUpdate();
 		}
+
+		if (isNoteWindow) {
+			setTitle(event.note.getMeta().title());
+		}
 	}
 
 	@Subscribe
@@ -1376,21 +1488,44 @@ public class ElephantWindow extends JFrame {
 
 	@Subscribe
 	public void handleUndoRedoSUR(UndoRedoStateUpdateRequest r) {
-		if (r.manager.canUndo()) {
-			iUndo.setEnabled(true);
-			iUndo.setName(r.manager.getUndoPresentationName());
-		} else {
-			iUndo.setEnabled(false);
-			iUndo.setName("Undo");
-		}
+		if (r.manager != null) {
+			if (r.manager.canUndo()) {
+				iUndo.setEnabled(true);
+				iUndo.setText(r.manager.getUndoPresentationName());
+			} else {
+				if (Elephant.undoManager.hasEvents()) {
+					iUndo.setEnabled(true);
+					iUndo.setText(Elephant.undoManager.getActionText());
+				} else {
+					iUndo.setEnabled(false);
+					iUndo.setText("Undo");
+				}
+			}
 
-		if (r.manager.canRedo()) {
-			iRedo.setEnabled(true);
-			iRedo.setName(r.manager.getRedoPresentationName());
-		} else {
-			iRedo.setEnabled(false);
-			iRedo.setName("Redo");
+			if (r.manager.canRedo()) {
+				iRedo.setEnabled(true);
+				iRedo.setText(r.manager.getRedoPresentationName());
+			} else {
+				iRedo.setEnabled(false);
+				iRedo.setText("Redo");
+			}
 		}
+		if (r.event != null) {
+			if (Elephant.undoManager.hasEvents()) {
+				iUndo.setEnabled(true);
+				iUndo.setText(Elephant.undoManager.getActionText());
+			} else {
+				iUndo.setEnabled(false);
+				iUndo.setText("Undo");
+			}
+			iRedo.setEnabled(false);
+			iRedo.setText("Redo");
+		}
+	}
+
+	@Subscribe
+	public void handleToastEvent(ToastEvent toast) {
+		showToast(toast.text);
 	}
 
 	public void searchHighlight() {
@@ -1410,12 +1545,14 @@ public class ElephantWindow extends JFrame {
 			String[] searchWords = text.toLowerCase().split(" ");
 			for (int n = 0; n < searchWords.length; n++) {
 				String word = searchWords[n];
-				DefaultHighlightPainter p = highlightPainters[n % highlightPainters.length];
+				if (word.length() > 0) {
+					DefaultHighlightPainter p = highlightPainters[n % highlightPainters.length];
 
-				int index = documentText.indexOf(word);
-				while (index > -1) {
-					editorTextPane.getHighlighter().addHighlight(index, index + word.length(), p);
-					index = documentText.indexOf(word, index + 1);
+					int index = documentText.indexOf(word);
+					while (index > -1) {
+						editorTextPane.getHighlighter().addHighlight(index, index + word.length(), p);
+						index = documentText.indexOf(word, index + 1);
+					}
 				}
 			}
 

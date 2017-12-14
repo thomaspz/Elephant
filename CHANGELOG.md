@@ -1,5 +1,59 @@
 # Changelog
 
+##v43
+- Menu font set to plain style in windows
+- Arrows up/down change note selection when search field is focused
+
+##v42
+- Fixed visual bug on Retina Macbooks when multiple notes are selected
+- Fixed ui focus when clearing search input with backspace (now search input stays focused)
+- Changed window title to "Elephant"
+
+##v41
+- Support macOS-style full screen
+- Now cleaning out some old, unused cache files from .imagecache folder
+
+##v40
+- Draw sharper images and PDFs on Retina Macbooks
+- Note|Note count - menu item
+- Clearing search goes back to notebook/note prior search
+- New App icon
+
+##v39
+- Added "charset" setting to optionally use a character set different from system character set. For example, "UTF-8"
+- Draw sharper background tiles on Retina Macbooks
+
+##v38
+(v38 had an issue with character sets)
+
+##v37
+- Added "defaultFiletype" setting. Use "md" to create new notes in markdown format. Default is "txt".
+- Reverted automatic removal of "md" from note title
+
+##v36
+- Markdown notes are saved as 'filename.md' instead of 'filename.md.txt'
+- Editor will automatically remove .md from note title when saving a markdown note
+- Fixed unusual hang with unfortunate search term
+
+##v35
+- Fixed wrong ui state for right panel when moving multiple notes and notebook is left empty.
+- Fixed clicking X in searchfield, now works same as ESC
+
+##v34
+- Fixed undo handling when moving and then editing notes
+
+##v33
+- Added text encryption/decryption via menu items: Edit | Encrypt Selection to Clipboard / Decrypt to Clipboard
+
+##v32
+- Added searching inside attachments. Most file types are supported (office docs, pdfs, etc)
+- Now using Apache PdfBox for better PDF support
+- Faster multithreaded Pdf rendering
+- Added ability to Undo note deletion/moving
+- App closes properly when last ElephantWindow is closed
+- Fixed Tag view drawing bug when >= 100 notes on a tag
+- Single note window now uses note title as window title
+
 ##v31
 - Fixed some key handling issues when separate note windows open
 
